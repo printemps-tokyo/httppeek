@@ -1,0 +1,13 @@
+# Built binaries
+/httppeek
+/dist/
+
+# Go build and test artifacts
+*.exe
+*.test
+*.out
+coverage.txt
+
+# OS / editor cruft
+.DS_Store
+*.log

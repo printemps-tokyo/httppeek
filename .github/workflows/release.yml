@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          version="${GITHUB_REF_NAME}"
+          outdir="dist"
+          name="httppeek_${version}_${GOOS}_${GOARCH}"
+          mkdir -p "$outdir"
+          go build -trimpath -ldflags "-s -w -X main.version=${version}" -o "$outdir/httppeek" .
+          tar -C "$outdir" -czf "$outdir/${name}.tar.gz" httppeek
+          rm "$outdir/httppeek"
+          ( cd "$outdir" && shasum -a 256 "${name}.tar.gz" > "${name}.tar.gz.sha256" )
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
