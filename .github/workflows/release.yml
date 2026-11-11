@@ -9,7 +9,18 @@ permissions:
   contents: write
 
 jobs:
+  # The release is created once, before the matrix: jobs creating it at the
+  # same moment used to collide, leaving one of them unable to upload.
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create the release if it does not exist
+        run: gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: create
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ubuntu-latest
     strategy:
