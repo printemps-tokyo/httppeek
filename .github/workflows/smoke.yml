@@ -1,0 +1,27 @@
+name: Smoke
+
+# The unit tests use local httptest servers. This checks the built CLI against
+# a real public host, by hand or once a week.
+on:
+  schedule:
+    - cron: "35 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+      - run: go build -o httppeek .
+      - name: An http URL redirects to https and ends in 200
+        run: |
+          ./httppeek --json http://github.com > out.json
+          jq -e '.exit_code == 0 and .chain[0].status_code == 301 and .final.status_code == 200' out.json
+          jq -e '(.tls.version | startswith("TLS")) and .tls.certificate.days_remaining > 0' out.json
