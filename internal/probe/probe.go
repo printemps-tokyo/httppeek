@@ -69,6 +69,9 @@ type Hop struct {
 	StatusCode int    `json:"status_code"`
 	Status     string `json:"status"`
 	Location   string `json:"location,omitempty"`
+	// SetCookie holds the hop's raw Set-Cookie values. They are not part of
+	// the JSON output (cookie values can be secrets); see CollectCookies.
+	SetCookie []string `json:"-"`
 }
 
 // HeaderKV is one response header rendered for display or JSON.
@@ -120,6 +123,8 @@ type Result struct {
 	Final      Final
 	TLS        *TLSInfo
 	Timing     Timing
+	Cookies    []Cookie   // filled by CollectCookies
+	HTTP3      *HTTP3Info // filled by CheckHTTP3
 }
 
 // ErrTooManyRedirects is returned when a chain exceeds Options.MaxRedirects.
@@ -183,6 +188,7 @@ func Run(ctx context.Context, client *http.Client, rawURL string, opts Options) 
 			StatusCode: resp.StatusCode,
 			Status:     resp.Status,
 			Location:   location,
+			SetCookie:  resp.Header.Values("Set-Cookie"),
 		}
 		result.Chain = append(result.Chain, hop)
 
@@ -305,7 +311,8 @@ func pick(h http.Header, names []string) []HeaderKV {
 }
 
 // AllHeaders returns every response header as a sorted slice of HeaderKV,
-// joining multi-valued headers with ", ".
+// joining multi-valued headers with ", ". Set-Cookie values are redacted
+// (see RedactSetCookie): cookie values are often session secrets.
 func AllHeaders(h http.Header) []HeaderKV {
 	names := make([]string, 0, len(h))
 	for name := range h {
@@ -314,7 +321,15 @@ func AllHeaders(h http.Header) []HeaderKV {
 	sortStrings(names)
 	out := make([]HeaderKV, 0, len(names))
 	for _, name := range names {
-		out = append(out, HeaderKV{Name: name, Value: strings.Join(h.Values(name), ", ")})
+		values := h.Values(name)
+		if http.CanonicalHeaderKey(name) == "Set-Cookie" {
+			redacted := make([]string, len(values))
+			for i, v := range values {
+				redacted[i] = RedactSetCookie(v)
+			}
+			values = redacted
+		}
+		out = append(out, HeaderKV{Name: name, Value: strings.Join(values, ", ")})
 	}
 	return out
 }
@@ -413,4 +428,22 @@ func sortStrings(s []string) {
 			s[j-1], s[j] = s[j], s[j-1]
 		}
 	}
+}
+
+// RedactSetCookie replaces the value in a Set-Cookie line with its length,
+// keeping the name and attributes: "sid=abc; Path=/" -> "sid=<3 bytes>; Path=/".
+func RedactSetCookie(line string) string {
+	pair, attrs, hasAttrs := strings.Cut(line, ";")
+	name, value, ok := strings.Cut(pair, "=")
+	if !ok {
+		name, value = "", pair
+	}
+	out := fmt.Sprintf("<%d bytes>", len(strings.Trim(value, " \t")))
+	if ok {
+		out = strings.TrimSpace(name) + "=" + out
+	}
+	if hasAttrs {
+		out += ";" + attrs
+	}
+	return out
 }

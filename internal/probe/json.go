@@ -33,7 +33,17 @@ type JSONResult struct {
 	Final      JSONFinal  `json:"final"`
 	TLS        *TLSInfo   `json:"tls"`
 	Timing     JSONTiming `json:"timing"`
+	Cookies    []Cookie   `json:"cookies"`
+	HTTP3      *HTTP3Info `json:"http3"`
 	ExitCode   int        `json:"exit_code"`
+}
+
+// JSONError is the JSON entry for a URL whose request failed, used in the
+// array that several URLs produce.
+type JSONError struct {
+	RequestURL string `json:"request_url"`
+	Error      string `json:"error"`
+	ExitCode   int    `json:"exit_code"`
 }
 
 // ToJSONResult converts a Result into its stable JSON representation.
@@ -53,7 +63,12 @@ func (r *Result) ToJSONResult() JSONResult {
 		},
 		TLS:      r.TLS,
 		Timing:   toJSONTiming(r.Timing),
+		Cookies:  r.Cookies,
+		HTTP3:    r.HTTP3,
 		ExitCode: ExitCode(r.Final.StatusCode, nil),
+	}
+	if out.Cookies == nil {
+		out.Cookies = []Cookie{}
 	}
 	if out.Chain == nil {
 		out.Chain = []Hop{}
